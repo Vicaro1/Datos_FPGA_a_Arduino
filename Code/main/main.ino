@@ -1,33 +1,10 @@
-/*====================================================================================================================================
-  Función:        Código que muestra por una pantalla LCD los valores que llegan por el puerto serie y posteriormente
-                  son almacenados en una tarjeta SD.
-  
-  Funcionamiento: Constantemente el arduino esta recibiendo datos por el puerto serie con un formato 
-                  concreto, esos datos son tratados y posteriormente mostrados en la pantalla LCD.
-                  
-  Formato:        XYZT=
-                  =:  Corresponde al caracter de fin de cadena.
-                  XY: Corresponde al primer número (Entrada de abejas).
-                    X: Primer digito hexadecial.
-                    Y: Segundo digito hexadecial.
-                  ZT: Corresponde al segundo número (Salida de abejas).
-                    Z: Primer digito hexadecial.
-                    T: Segundo digito hexadecial.
-                
-  Conversión:     Para pasar de Hexadecimal a decimal se el siguiente algoritmo.
-                  Si el dígito que se esta leyendo es una letra (A,B,C,D,E,F) se escribe el equivalente decimal (10,11,12,13,14,15)
-                  Si el dígito que se esta leyendo es un número se deja como está.
-                  Posteriormente se hace la conversion adecuada para obtener el número deseado.
-                    Input=X*16^1+Y*16*0=X*16+Y*1=X*16+Y
-                    Output=Z*16^1+T*16*0=Z*16+T*1=Z*16+T
-  
-  Falso Delay:    Creamos una "tarea" empleando la funcion milis y dos variables.
-
-  RealTimeClock:  Emplearemos un modulo RTC para saber la fecha y hora en todo momento.
-
-  Modulo SD:      Usando un modulo SD en conjunto con el modulo RTC crearemos un datalogger que almacene los datos al final del día.
-
-====================================================================================================================================*/
+/** Encabezado:
+ * @file main.ino
+ * @brief Código de Datos_FPGA_a_Arduino
+ * @author [Victor Caro Pastor](https://github.com/Vicaro1)
+ * @version  V3.2
+ * @date  05-04-2023
+*/
 
 // Se incluirá una libreria para la comunicación I2C, adaptador LCD I2C, reloj RTC y modulo SD.
 #include <Wire.h>               
@@ -65,11 +42,74 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 RTC_DS1307 rtc;
 DateTime fecha_y_hora;
 
-
 // Para interactuar con un archivo dentro de la tarjeta declaramos una variable del tipo File.
 File mi_archivo;
 
-/*==================================================== SETUP ===========================================================*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ FUNCIONES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/* Esta función se encarga de colocar un 0 delante del número si este tiene solo un digito. 
+ *  @param numero: Dígito se se comprueba.
+ *  @type numero: int.
+ *  @return numeros: Cadena con el 0 añadido o no al valor de numero.
+ *  @rtype numeros: String.
+ */
+String coloca_2_digitos(int numero) 
+{
+  String numeros;
+  if (numero < 10) numeros = "0" + String(numero);
+  else numeros = String(numero);
+  return numeros;
+}
+
+/* Esta función se encarga de convertir el caracter ASCII (que representa un valor hexadeciamal) en decimal 
+ * a partir de una cadena de datos completa .
+ *  @param cadena: Cadena de caracteres con todos los datos.
+ *  @type cadena: String.
+ *  @param x: Posicion del caracter a evaluar en la cadena de datos.
+ *  @type x: int8_t.
+ *  @return caracter_decimal: Valor decimal del caracter hexadecimal evaluado.
+ *  @rtype caracter_decimal: int16_t.
+ */
+int16_t conversor_hex_int(String cadena,int8_t x)
+{
+  String caracter = cadena.substring(x, x+1);
+  int16_t caracter_decimal = 0;
+  if(caracter=="A") caracter_decimal=10;
+  else if(caracter=="B") caracter_decimal=11;
+  else if(caracter=="C") caracter_decimal=12;
+  else if(caracter=="D") caracter_decimal=13;
+  else if(caracter=="E") caracter_decimal=14;
+  else if(caracter=="F") caracter_decimal=15;
+  else caracter_decimal=caracter.toInt();
+  return caracter_decimal;
+}
+
+
+/* Esta función se encarga de leer los caracteres entrantes por el puerto serie e ir
+ * añadiendolos a una cadena de datos hasta completar los 5 bytes del mensaje, activando una variable
+ * bandera.
+ */
+void serialEvent()
+{
+  while(Serial.available())
+  {              
+    char caracter = (char)Serial.read();  // Se lee el byte como caracter y se guarda en una variable.    
+    g_cadena_datos += caracter;           // Se concatena dicha variable a la cadena de datos.    
+    ++g_contador_bytes;                   // Se incrementa el contador en 1.
+    if(g_contador_bytes == 5)             // Si se reciben los 5 bytes del mensaje.
+    {              
+      g_contador_bytes = 0;               // Se reinicia el contador.   
+      g_b_cadena_datos_completa = true;   // Se activa la variable bandera. 
+      Serial.println("Cadena");   
+    }
+  }
+}
+
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ SETUP ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 // En el setup se incian todos los modulos, el puerto UART y se escribe el cuerpo del LCD.
 // Se configura la comunicación UART con 8 bit, paridad par y 1 bit de parada.
 void setup() 
@@ -102,7 +142,9 @@ void setup()
   }       
 }
 
-/*===================================================== LOOP ===========================================================*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ LOOP ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 // En el loop se recibiran los datos por el puerto serie continuamente y se mostraran por la pantalla LCD cada 4 segundos.
 void loop() 
 {
@@ -176,65 +218,7 @@ void loop()
     g_abejas_entrantes = 0;    
     g_abejas_salientes = 0;      
     g_abejas_panal = 0;
-    cuenta=0;      
+    cuenta = 0;      
    }    
 }
 
-/*===================================================== FUNCIONES ===========================================================*/
-/* Esta función se encarga de colocar un 0 delante del número si este tiene solo un digito. 
- *  @param numero: Dígito se se comprueba.
- *  @type numero: int.
- *  @return numeros: Cadena con el 0 añadido o no al valor de numero.
- *  @rtype numeros: String.
- */
-String coloca_2_digitos(int numero) 
-{
-  String numeros;
-  if (numero < 10) numeros = "0" + String(numero);
-  else numeros = String(numero);
-  return numeros;
-}
-
-/* Esta función se encarga de convertir el caracter ASCII (que representa un valor hexadeciamal) en decimal 
- * a partir de una cadena de datos completa .
- *  @param cadena: Cadena de caracteres con todos los datos.
- *  @type cadena: String.
- *  @param x: Posicion del caracter a evaluar en la cadena de datos.
- *  @type x: int8_t.
- *  @return caracter_decimal: Valor decimal del caracter hexadecimal evaluado.
- *  @rtype caracter_decimal: int16_t.
- */
-int16_t conversor_hex_int(String cadena,int8_t x)
-{
-  String caracter = cadena.substring(x, x+1);
-  int16_t caracter_decimal = 0;
-  if(caracter=="A") caracter_decimal=10;
-  else if(caracter=="B") caracter_decimal=11;
-  else if(caracter=="C") caracter_decimal=12;
-  else if(caracter=="D") caracter_decimal=13;
-  else if(caracter=="E") caracter_decimal=14;
-  else if(caracter=="F") caracter_decimal=15;
-  else caracter_decimal=caracter.toInt();
-  return caracter_decimal;
-}
-
-
-/* Esta función se encarga de leer los caracteres entrantes por el puerto serie e ir
- * añadiendolos a una cadena de datos hasta completar los 5 bytes del mensaje, activando una variable
- * bandera.
- */
-void serialEvent()
-{
-  while(Serial.available())
-  {              
-    char caracter = (char)Serial.read();  // Se lee el byte como caracter y se guarda en una variable.    
-    g_cadena_datos += caracter;           // Se concatena dicha variable a la cadena de datos.    
-    ++g_contador_bytes;                   // Se incrementa el contador en 1.
-    if(g_contador_bytes == 5)             // Si se reciben los 5 bytes del mensaje.
-    {              
-      g_contador_bytes = 0;               // Se reinicia el contador.   
-      g_b_cadena_datos_completa = true;   // Se activa la variable bandera. 
-      Serial.println("Cadena");   
-    }
-  }
-}
